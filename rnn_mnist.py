@@ -11,14 +11,15 @@ import torch.nn as nn
 import torchvision
 import torchvision.transforms as transforms
 import numpy as np
+from torch.autograd import Variable
 
 
 # Device configuration
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 # Hyper-parameters
-sequence_length = 28       #伝達していく1シークエンス分の特徴量
-input_size = 28            #1シークエンス分の特徴量
+sequence_length = 28
+input_size = 28
 hidden_size = 128
 num_layers = 2
 num_classes = 10
@@ -54,18 +55,29 @@ class RNN(nn.Module):
         self.lstm = nn.LSTM(input_size, hidden_size, num_layers, batch_first=True)
         self.fc = nn.Linear(hidden_size, num_classes)
     
-    def forward(self, x):
+    def forward(self, x,h0,c0):
         # Set initial hidden and cell states 
-        h0 = torch.zeros(self.num_layers, x.size(0), self.hidden_size).to(device) 
-        c0 = torch.zeros(self.num_layers, x.size(0), self.hidden_size).to(device)
+        #h0 = torch.zeros(self.num_layers, x.size(0), self.hidden_size).to(device) 
+        #c0 = torch.zeros(self.num_layers, x.size(0), self.hidden_size).to(device)
         
         # Forward propagate LSTM
-        out, _ = self.lstm(x, (h0, c0))  # out: tensor of shape (batch_size, seq_length, hidden_size)
-        
+        out, (h0,c0) = self.lstm(x, (h0, c0))  # out: tensor of shape (batch_size, seq_length, hidden_size)
+        print(h0)
         # Decode the hidden state of the last time step
         out = self.fc(out[:, -1, :])
         
-        return out
+        return out,(h0,c0)
+    
+    def initHidden(self):
+        # 最初に入力する隠れ状態を初期化
+        # LSTMの場合は (h, c) と2つある
+        # (num_layers, batch, hidden_size)
+        h = Variable(torch.zeros(1, 1, self.hidden_size))
+        c = Variable(torch.zeros(1, 1, self.hidden_size))
+        if cuda:
+            h = h.cuda()
+            c = c.cuda()
+        return (h, c)
 
 model = RNN(input_size, hidden_size, num_layers, num_classes).to(device)
 
@@ -78,7 +90,7 @@ optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
 total_step = len(train_loader)
 for epoch in range(num_epochs):
     for i, (images, labels) in enumerate(train_loader):
-        images = images.reshape(-1, sequence_length, input_size).to(device)#-1は入力に対して受動的にサイズを変えることができる引数
+        images = images.reshape(-1, sequence_length, input_size).to(device)
         labels = labels.to(device)
         # Forward pass
         outputs = model(images)
